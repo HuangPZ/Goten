@@ -91,7 +91,7 @@ Enclave_Cpp_Files := Enclave/Enclave.cpp Enclave/sgxdnn.cpp
 SGXDNN_Cpp_Files := sgxdnn_main.cpp Crypto.cpp sgxaes.cpp aes-stream.cpp
 #SGXDNN_Cpp_Files += aesni_ghash.cpp aesni_key.cpp  aesni-wrap.cpp
 Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
-Enclave_Include_Paths += -IInclude -ISGXDNN -IInclude/eigen3_sgx -I/usr/lib/gcc/x86_64-linux-gnu/7.5.0/include
+Enclave_Include_Paths += -IInclude -ISGXDNN -IInclude/eigen3_sgx -I/usr/lib/gcc/x86_64-linux-gnu/9/include
 
 CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
 ifeq ($(CC_BELOW_4_9), 1)
@@ -204,7 +204,7 @@ App/enclave_bridge.so: App/enclave_bridge.cpp App/Enclave_u.o App/aes_stream_com
 		$(App_Link_Flags)
 	@echo "CXX  <=  $<"
 
-$(App_Name): App/Enclave_u.o App/enclave_bridge.so #$(App_Cpp_Objects) $(App_CC_Objects)
+$(App_Name): App/sgxaes_common.o App/aes_stream_common.o App/crypto_common.o App/Enclave_u.o App/enclave_bridge.so #$(App_Cpp_Objects) $(App_CC_Objects) 
 	$(CXX) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
@@ -219,7 +219,7 @@ Enclave/Enclave_t.c: $(SGX_EDGER8R) Enclave/Enclave.edl
 	cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
-Enclave/Enclave_t.o: Enclave/Enclave_t.c
+Enclave/Enclave_t.o: App/sgxaes_common.o App/sgxaes_common.o Enclave/Enclave_t.c
 	$(CC) $(Enclave_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
