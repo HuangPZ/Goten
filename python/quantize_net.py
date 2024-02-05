@@ -377,7 +377,7 @@ class NetQVgg16(nn.Module):
 
 
 class NetQ(nn.Module):
-    def __init__(self, n_class):
+    def __init__(self, n_class=10):
         super().__init__()
         self.pool = nn.MaxPool2d(2, 2)
 

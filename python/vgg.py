@@ -9,6 +9,7 @@ from python.common_net import register_layer, register_weight_layer, get_layer_w
     get_layer_weight_grad, get_layer_output, get_layer_output_grad, get_layer_input_grad
 from python.enclave_interfaces import GlobalTensor
 from python.layers.batch_norm_2d import SecretBatchNorm2dLayer
+from python.layers.batch_norm_1d import SecretBatchNorm1dLayer
 from python.layers.conv2d import SecretConv2dLayer
 from python.layers.flatten import SecretFlattenLayer
 from python.layers.input import SecretInputLayer
@@ -314,6 +315,205 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
                     torch.cuda.empty_cache()
         NamedTimer.end("TrainValidationEpoch")
 
+def local_vgg16(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
+
+    batch_size = 128
+    n_img_channel = 3
+    img_hw = 32
+    n_classes = 10
+
+    n_unit_fc1 = 512
+    n_unit_fc2 = 512
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=32)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+
+    def generate_conv_module(index, n_channel_conv, is_big=True):
+        res = []
+        if is_big:
+            for _ in range(2):  # VGG-16 has 2 or 3 conv layers before a pool in the bigger blocks
+                conv_local = SecretConv2dLayer(sid, f"Conv{index}", n_channel_conv, 3)
+                norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+                relu_local = SecretReLULayer(sid, f"Relu{index}")
+                res += [conv_local, norm_local, relu_local]
+                index += 1
+        conv_local = SecretConv2dLayer(sid, f"Conv{index}", n_channel_conv, 3)
+        norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+        relu_local = SecretReLULayer(sid, f"Relu{index}")
+        pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 2)
+        res += [conv_local, norm_local, relu_local, pool_local]
+        return res, index
+
+    index = 1
+    conv_module_1, index = generate_conv_module(index, 64, is_big=False)
+    conv_module_2, index = generate_conv_module(index, 128, is_big=False)
+    conv_module_3, index = generate_conv_module(index, 256, is_big=True)
+    conv_module_4, index = generate_conv_module(index, 512, is_big=True)
+    conv_module_5, index = generate_conv_module(index, 512, is_big=True)
+
+    all_conv_modules = conv_module_1 + conv_module_2 + conv_module_3 + conv_module_4 + conv_module_5
+
+    # Fully connected layers adjusted for CIFAR-10 classification
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+    fc1 = SecretMatmulLayer(sid, "FC1", batch_size, 4096)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 4096)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, n_classes)  # Output layer for CIFAR-10
+
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+
+    # layers = [input_layer] + all_conv_module + [flatten, fc1, fc_norm1, fc_relu1, fc2, output_layer]
+    layers = [input_layer] + all_conv_modules + [flatten, fc1, fc_relu1, fc2, fc_relu2, fc3, output_layer]
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                secret_nn.forward()
+                break
+
+        NamedTimer.end("TrainValidationEpoch")
+
+def local_alexnet(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
+
+    batch_size = 128
+    n_img_channel = 3
+    img_hw = 32
+    n_classes = 10
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=32)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+    all_conv_modules = []
+    
+    index = 1
+    conv_local = SecretConv2dLayer(sid, f"Conv{index}", 96, 11, stride=4, padding = 10)
+    norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+    relu_local = SecretReLULayer(sid, f"Relu{index}")
+    pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
+    
+    index = 2
+    conv_local = SecretConv2dLayer(sid, f"Conv{index}", 256, 5)
+    norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+    relu_local = SecretReLULayer(sid, f"Relu{index}")
+    pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
+    # Adjusting the convolutional layers for AlexNet
+    # conv1 = SecretConv2dLayer(sid, "Conv1", 96, 11, stride=4, padding = 10)
+    # norm1 = SecretBatchNorm2dLayer(sid, "Norm1")
+    # relu1 = SecretReLULayer(sid, "Relu1")
+    # pool1 = SecretMaxpool2dLayer(sid, "Pool1", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+
+    # conv2 = SecretConv2dLayer(sid, "Conv2", 256, 5)
+    # norm2 = SecretBatchNorm2dLayer(sid, "Norm2")
+    # relu2 = SecretReLULayer(sid, "Relu2")
+    # pool2 = SecretMaxpool2dLayer(sid, "Pool2", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+
+    # conv3 = SecretConv2dLayer(sid, "Conv3", 384, 3)
+    # relu3 = SecretReLULayer(sid, "Relu3")
+
+    # conv4 = SecretConv2dLayer(sid, "Conv4", 384, 3)
+    # relu4 = SecretReLULayer(sid, "Relu4")
+
+    # conv5 = SecretConv2dLayer(sid, "Conv5", 256, 3)
+    # relu5 = SecretReLULayer(sid, "Relu5")
+
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+
+    # # Adjusting the fully connected layers for AlexNet
+    # fc1 = SecretMatmulLayer(sid, "FC1", batch_size, 256)
+    # fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+
+
+    # fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 256)
+    # fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, n_classes)
+    fc_relu3 = SecretReLULayer(sid, "FcRelu3")
+
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+    # Assembling the layers for AlexNet
+    # layers = [input_layer, conv1, norm1, relu1, pool1, conv2, norm2, relu2, pool2, conv3, relu3, conv4, 
+    #           relu4, conv5, relu5, flatten, fc1, fc_relu1, fc2, fc_relu2, fc3, fc_relu3, output_layer]
+    # layers = [input_layer,  norm1, flatten, fc3, fc_relu3, output_layer]
+    layers = [input_layer] + all_conv_modules + [flatten, fc3,fc_relu3, output_layer]
+
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                print("Forward")
+                secret_nn.forward()
+            break
+
+        # NamedTimer.end("TrainValidationEpoch")
+
+
+
 
 if __name__ == "__main__":
     input_sid, MasterAddr, MasterPort, test = argparser_distributed()
@@ -324,4 +524,4 @@ if __name__ == "__main__":
 
     seed_torch(123)
 
-    marshal_process(input_sid, MasterAddr, MasterPort, local_vgg9, [])
+    marshal_process(input_sid, MasterAddr, MasterPort, local_alexnet, [])

@@ -5,16 +5,16 @@ from python.linear_shares import TensorLoader
 
 
 class SecretMaxpool2dLayer(SecretActivationLayer):
-    def __init__(self, sid, LayerName, filter_hw, is_enclave_mode=True):
+    def __init__(self, sid, LayerName, filter_hw, maxpoolpadding = None, row_stride = None, col_stride = None, is_enclave_mode=True):
         super().__init__(sid, LayerName, is_enclave_mode)
         self.ForwardFuncName = "Maxpool2d"
         self.BackwardFuncName = "DerMaxpool2d"
         self.filter_hw = filter_hw
         self.startmaxpool = False
         self.PlainFunc = torch.nn.MaxPool2d
-        self.maxpoolpadding = None
-        self.row_stride = None
-        self.col_stride = None
+        self.maxpoolpadding = maxpoolpadding
+        self.row_stride = row_stride
+        self.col_stride = col_stride
 
         if is_enclave_mode:
             self.ForwardFunc = self.maxpoolfunc
@@ -30,8 +30,8 @@ class SecretMaxpool2dLayer(SecretActivationLayer):
             raise ValueError("Maxpooling2d apply only to 4D Tensor")
         if self.InputShape[2] != self.InputShape[3]:
             raise ValueError("The input tensor has to be square images")
-        if self.InputShape[2] % self.filter_hw != 0:
-            raise ValueError("The input tensor needs padding for this filter size")
+        # if self.InputShape[2] % self.filter_hw != 0:
+        #     raise ValueError("The input tensor needs padding for this filter size")
         InputHw = self.InputShape[2]
         output_hw = InputHw // self.filter_hw
         self.OutputShape = [self.InputShape[0], self.InputShape[1], output_hw, output_hw]

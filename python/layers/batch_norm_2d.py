@@ -46,14 +46,17 @@ class SecretBatchNorm2dLayer(SecretActivationLayer):
     def init(self, start_enclave=True):
         if self.sid == 2:
             return
+        # print(f"Testloader: {self.LayerName} init")
         TensorLoader.init(self, start_enclave)
-
         if self.is_enclave_mode:
+            # print(f"BatchNorm2d: {self.LayerName} init_ENCLAVE")
             self.PlainFunc = self.PlainFunc(self.InputShape[1])
             self.get_cpu("weight").data.copy_(self.PlainFunc.weight.data)
             self.get_cpu("bias").data.copy_(self.PlainFunc.bias.data)
+            # print(f"BatchNorm2d: {self.LayerName} transfer_cpu_to_enclave")
             self.transfer_cpu_to_enclave("weight")
             self.transfer_cpu_to_enclave("bias")
+            # print(f"BatchNorm2d: {self.LayerName} batchnorm_init")
             self.batchnorm_init(
                 self.LayerName,
                 "input", "output", "weight", "bias",
@@ -62,7 +65,9 @@ class SecretBatchNorm2dLayer(SecretActivationLayer):
                 "mu",
                 self.BatchSize, self.NumChannel, self.ImgH, self.ImgW,
                 int(self.IsAffine), int(self.IsCumulative), self.momentum, self.epsilon)
+            # print(f"BatchNorm2d: {self.LayerName} batchnorm_init_DONE")
         else:
+            # print(f"BatchNorm2d: {self.LayerName} init_NOT_ENCLAVE")
             self.ForwardFunc = self.ForwardFunc(self.InputShape[1])
             self.PlainFunc = self.PlainFunc(self.InputShape[1])
             self.ForwardFunc.weight.data.copy_(self.PlainFunc.weight.data)

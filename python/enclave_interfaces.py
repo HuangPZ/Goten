@@ -474,6 +474,13 @@ class EnclaveInterface(object):
                        mu_name,
                        batch_size, num_channel, img_h, img_w,
                        is_affine, is_cumulative, momentum, epsilon):
+        print([self.get_eid(), self.get_tag(layer_name),
+            self.get_tag(input_name), self.get_tag(output_name), self.get_tag(gamma_name), self.get_tag(beta_name),
+            self.get_tag(der_input_name), self.get_tag(der_output_name), self.get_tag(der_gamma_name), self.get_tag(der_beta_name),
+            self.get_tag(run_mean_name), self.get_tag(run_var_name), self.get_tag(cur_mean_name), self.get_tag(cur_var_name),
+            self.get_tag(mu_name),
+            batch_size, num_channel, img_h, img_w,
+            is_affine, is_cumulative, momentum, epsilon])
         self.lib.InitBatchnorm(
             self.get_eid(), self.get_tag(layer_name),
             self.get_tag(input_name), self.get_tag(output_name), self.get_tag(gamma_name), self.get_tag(beta_name),

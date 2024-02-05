@@ -34,12 +34,13 @@ def union_dicts(*dicts):
     return dict(i for dct in dicts for i in dct.items())
 
 
-def calc_conv2d_output_shape(x_shape, w_shape, padding):
+def calc_conv2d_output_shape(x_shape, w_shape, padding, stride=1):
     batch_size = x_shape[0]
     n_output_channel = w_shape[0]
     img_hw = x_shape[3]
     filter_hw = w_shape[3]
-    output_hw = img_hw + 2 * padding - (filter_hw - 1)
+    output_hw = (img_hw + 2 * padding - (filter_hw - 1)-1) // stride+1
+    print("output_shape", [batch_size, n_output_channel, output_hw, output_hw])
     return [batch_size, n_output_channel, output_hw, output_hw]
 
 

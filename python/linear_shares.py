@@ -24,18 +24,24 @@ torch.backends.cudnn.deterministic = True
 LearnableParamTuple = namedtuple('LearnableParam', ('dw_name', 'w_name', 'shape'))
 
 
-def conv2d_op(w, x, is_div=True):
-    padding = 1
+def conv2d_op(w, x, stride = 1, padding=0, is_div=True):
+    if padding == 0:
+        padding = w.shape[-1]//2
+    else:
+        padding = padding
 
     batch_size, in_chan, img_hw, _ = x.size()
     out_chan, _, fil_hw, __ = w.size()
+    print("conv2d_op: ", batch_size, in_chan, img_hw, out_chan, fil_hw, w.size(), x.size())
     y_shape = [batch_size, out_chan, img_hw, img_hw]
     dtype = x.dtype
     device = x.device
     is_cpu = True if device == torch.device("cpu") else False
 
     def base_conv2d(sub_x, sub_w):
-        return F.conv2d(sub_x, sub_w, padding=padding)
+        a = F.conv2d(sub_x, sub_w, padding=padding, stride=stride)
+        print("base_conv2d: ", a.size())
+        return a
 
     if is_cpu or (is_div is False):
         return base_conv2d(x, w)
@@ -53,6 +59,7 @@ def conv2d_op(w, x, is_div=True):
             y[start_batch_size:end_batch_size, start_out_chan:end_out_chan, :, :] += \
                 base_conv2d(x[start_batch_size:end_batch_size, start_in_chan:end_in_chan, :, :],
                             w[start_out_chan:end_out_chan, start_in_chan:end_in_chan, :, :])
+        print("sum_of_div: ", y.size())
         return y
 
     shapes_v100 = {
@@ -541,7 +548,7 @@ class SecretBaseS2(SecretOpBase):
         self.compute()
 
 
-def secret_op_class_factory(sid, target_op_name):
+def secret_op_class_factory(sid, target_op_name,stride = 1,padding=0):
     all_target_op = {"Matmul": matmul_op, "MatmulInputGrad": matmul_input_grad_op,
                      "MatmulWeightGrad": matmul_weight_grad_op,
                      "Conv2d": conv2d_op, "Conv2dInputGrad": conv2d_input_grad_op,
@@ -557,7 +564,10 @@ def secret_op_class_factory(sid, target_op_name):
 
     # noinspection PyUnusedLocal
     def target_op(self, a, b):
-        return target_op_func(a, b)
+        if target_op_name == "Conv2d":
+            return target_op_func(a, b, stride, padding)
+        else:
+            return target_op_func(a, b)
 
     new_class = type(class_name, (sid_class,), {"__init__": __init__, "target_op": target_op})
     return new_class
@@ -593,9 +603,11 @@ class SecretNeuralNetwork(TensorLoader):
             layer.set_eid(self.get_eid())
             layer.init_shape()
             layer.link_tensors()
-
+            
+        print("Set layers")
         for layer in self.layers:
-            layer.init(start_enclave=False)
+            print(f"Set layer {layer.LayerName}")
+            layer.init(start_enclave=False)  #? why was this false
 
     def execute_for_each_layer(self, func, reverse=False):
         layers = self.layers[::-1] if reverse else self.layers
@@ -622,6 +634,7 @@ class SecretNeuralNetwork(TensorLoader):
 
     def forward(self):
         def run_forward(layer):
+            print(f"SID: {self.sid} {layer.LayerName} Forward")
             layer.forward()
         with NamedTimerInstance(f"S{self.sid}: {self.nn_name} Forward"):
             self.execute_for_each_layer(run_forward)
