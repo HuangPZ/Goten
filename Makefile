@@ -219,7 +219,7 @@ Enclave/Enclave_t.c: $(SGX_EDGER8R) Enclave/Enclave.edl
 	cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
-Enclave/Enclave_t.o: App/sgxaes_common.o App/sgxaes_common.o Enclave/Enclave_t.c
+Enclave/Enclave_t.o: Enclave/Enclave_t.c
 	$(CC) $(Enclave_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
