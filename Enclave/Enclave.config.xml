@@ -6,7 +6,7 @@
   <StackMaxSize>0x2000000</StackMaxSize>
 <!--  <HeapMaxSize>0x99000000</HeapMaxSize>-->
 <!--  <HeapMaxSize>0x280000000</HeapMaxSize> -->
-  <HeapMaxSize>0x8000000</HeapMaxSize>
+  <HeapMaxSize>0x80000000</HeapMaxSize>
 <!--  <HeapMaxSize>0x8000000</HeapMaxSize>-->
   <TCSNum>4</TCSNum>
   <TCSPolicy>1</TCSPolicy>

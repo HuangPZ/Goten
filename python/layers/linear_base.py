@@ -11,8 +11,8 @@ from python.enclave_interfaces import GlobalTensor as gt
 
 class SecretLinearLayerBase(SecretLayerBase):
     ForwardOutput = None
-    BackwardInput = None
-    BackwardWeight = None
+    # BackwardInput = None
+    # BackwardWeight = None
     x_shape = None
     w_shape = None
     y_shape = None
@@ -22,7 +22,7 @@ class SecretLinearLayerBase(SecretLayerBase):
         super().__init__(sid, LayerName)
 
         self.StoreInEnclave = True
-        self.SecretOpList = [self.ForwardOutput, self.BackwardInput, self.BackwardWeight, ]
+        self.SecretOpList = [self.ForwardOutput,]
         self.NoRemapTag = self.ForwardOutput.get_tag
         self.IsDummyForS2 = False
         if self.sid == 2:
@@ -38,20 +38,18 @@ class SecretLinearLayerBase(SecretLayerBase):
     def init_shape(self):
         # Weight, input, output
         self.ForwardOutput.set_shapes(self.w_shape, self.x_shape, self.y_shape)
-        self.BackwardInput.set_shapes(self.w_shape, self.y_shape, self.x_shape)
-        self.BackwardWeight.set_shapes(self.y_shape, self.x_shape, self.w_shape)
+        # self.BackwardInput.set_shapes(self.w_shape, self.y_shape, self.x_shape)
+        # self.BackwardWeight.set_shapes(self.y_shape, self.x_shape, self.w_shape)
         self.LearnableParamsList = [LearnableParamTuple(w_name="weight", dw_name="DerWeight", shape=self.w_shape), ]
 
     def link_tensors(self):
-        for k, v in InputGradRemap.items():
-            gt.link_tags(self.BackwardInput.get_tag(k, remap=False), self.ForwardOutput.get_tag(v, remap=False))
-        for k, v in WeightGradRemap.items():
-            gt.link_tags(self.BackwardWeight.get_tag(k, remap=False), self.ForwardOutput.get_tag(v, remap=False))
+        # for k, v in InputGradRemap.items():
+        #     gt.link_tags(self.BackwardInput.get_tag(k, remap=False), self.ForwardOutput.get_tag(v, remap=False))
+        # for k, v in WeightGradRemap.items():
+        #     gt.link_tags(self.BackwardWeight.get_tag(k, remap=False), self.ForwardOutput.get_tag(v, remap=False))
         # TODO: Reduce reload
         layer_to_op_mapping = [("input", self.ForwardOutput, "Bf"), ("weight", self.ForwardOutput, "Af"),
-                               ("output", self.ForwardOutput, "Cf"), ("DerOutput", self.BackwardInput, "Bf"),
-                               ("DerOutput", self.BackwardWeight, "Af"), ("DerInput", self.BackwardInput, "Cf"),
-                               ("DerWeight", self.BackwardWeight, "Cf")]
+                               ("output", self.ForwardOutput, "Cf"), ]
         for layer_tensor_name, op, op_tensor_name in layer_to_op_mapping:
             def link_in_linear_layer(a, b, c):
                 gt.link_tags(self.get_tag(a, remap=False), b.get_tag(c, remap=False))
@@ -86,11 +84,11 @@ class SecretLinearLayerBase(SecretLayerBase):
                 self.ForwardOutput.set_tensor_cpu_enclave("BQ", x)
             else:
                 self.ForwardOutput.set_tensor_cpu_enclave("Bf", x)
-        if dy is not None:
-            if for_quantized:
-                self.BackwardWeight.set_tensor_cpu_enclave("AQ", dy)
-            else:
-                self.BackwardWeight.set_tensor_cpu_enclave("Af", dy)
+        # if dy is not None:
+        #     if for_quantized:
+        #         self.BackwardWeight.set_tensor_cpu_enclave("AQ", dy)
+        #     else:
+        #         self.BackwardWeight.set_tensor_cpu_enclave("Af", dy)
 
     def inject_params(self, params):
         if self.sid == -2:
@@ -108,17 +106,18 @@ class SecretLinearLayerBase(SecretLayerBase):
     def forward(self, need_quantize=True):
         if self.sid != 2:
             self.forward_tensor_transfer()
-
+    
         with NamedTimerInstance(f"S{self.sid}: {self.LayerName} forward", verbose_level=VerboseLevel.LAYER):
             self.ForwardOutput.compute(need_quantize=need_quantize)
+        
 
-    def backward(self, need_quantize=True):
-        if self.sid != 2:
-            self.backward_tensor_transfer()
+    # def backward(self, need_quantize=True):
+    #     if self.sid != 2:
+    #         self.backward_tensor_transfer()
 
-        with NamedTimerInstance(f"S{self.sid}: {self.LayerName} backward", verbose_level=VerboseLevel.LAYER):
-            self.BackwardWeight.compute(need_quantize=need_quantize)
-            self.BackwardInput.compute(need_quantize=need_quantize)
+    #     with NamedTimerInstance(f"S{self.sid}: {self.LayerName} backward", verbose_level=VerboseLevel.LAYER):
+    #         self.BackwardWeight.compute(need_quantize=need_quantize)
+    #         self.BackwardInput.compute(need_quantize=need_quantize)
 
     def plain_forward(self, quantized_only=False):
         self.PlainFunc = self.ForwardOutput.target_op
@@ -142,14 +141,14 @@ class SecretLinearLayerBase(SecretLayerBase):
             self.PlainForwardResult = mod_move_down(self.PlainForwardResult)
         self.PlainForwardResult = self.PlainForwardResult.type(SecretConfig.dtypeForCpuOp)
 
-    def plain_backward(self, quantized_only=False):
-        der_output_name = set_tensor_name_maybe_quantized("DerOutput", quantized_only)
-        self.make_sure_cpu_is_latest(der_output_name)
-        torch.set_num_threads(1)
-        with NamedTimerInstance(f"S{self.sid}: {self.LayerName} PlainBackward"):
-            self.grad_func_for_speed(self.get_cpu(der_output_name))
-        torch.set_num_threads(4)
-        self.PlainBackwardResult = self.GradFunction(self.get_cpu(der_output_name).type(torch.double))
+    # def plain_backward(self, quantized_only=False):
+    #     der_output_name = set_tensor_name_maybe_quantized("DerOutput", quantized_only)
+    #     self.make_sure_cpu_is_latest(der_output_name)
+    #     torch.set_num_threads(1)
+    #     with NamedTimerInstance(f"S{self.sid}: {self.LayerName} PlainBackward"):
+    #         self.grad_func_for_speed(self.get_cpu(der_output_name))
+    #     torch.set_num_threads(4)
+    #     self.PlainBackwardResult = self.GradFunction(self.get_cpu(der_output_name).type(torch.double))
 
     # @profile
     def show_plain_error(self, quantized_only=False):
@@ -162,27 +161,27 @@ class SecretLinearLayerBase(SecretLayerBase):
         err = compare_expected_actual(self.PlainForwardResult, self.get_cpu(output_name), get_relative=True, show_where_err=True)
         print(f"S{self.sid}: {self.LayerName} Forward Error {err}")
 
-        if self.PlainBackwardResult is None:
-            return err
-        PlainBackwardInputResult = self.PlainBackwardResult[0]
-        PlainBackwardWeightResult = self.PlainBackwardResult[1]
-        PlainBackwardWeightResult = self.transpose_weight_grad_for_matmul(PlainBackwardWeightResult)
-        if quantized_only:
-            PlainBackwardInputResult = mod_move_down(PlainBackwardInputResult)
-            PlainBackwardWeightResult = mod_move_down(PlainBackwardWeightResult)
+        # if self.PlainBackwardResult is None:
+        #     return err
+        # PlainBackwardInputResult = self.PlainBackwardResult[0]
+        # PlainBackwardWeightResult = self.PlainBackwardResult[1]
+        # PlainBackwardWeightResult = self.transpose_weight_grad_for_matmul(PlainBackwardWeightResult)
+        # if quantized_only:
+        #     PlainBackwardInputResult = mod_move_down(PlainBackwardInputResult)
+        #     PlainBackwardWeightResult = mod_move_down(PlainBackwardWeightResult)
 
         self.transfer_enclave_to_cpu(der_input_name)
         self.transfer_enclave_to_cpu(der_weight_name)
         # To know the err if the input is completely garbage
-        err_grad_weight = compare_expected_actual(PlainBackwardWeightResult, self.get_cpu(der_weight_name),
-                                                  get_relative=True)
-        err_grad_input = compare_expected_actual(PlainBackwardInputResult, self.get_cpu(der_input_name),
-                                                 get_relative=True)
+        # err_grad_weight = compare_expected_actual(PlainBackwardWeightResult, self.get_cpu(der_weight_name),
+        #                                           get_relative=True)
+        # err_grad_input = compare_expected_actual(PlainBackwardInputResult, self.get_cpu(der_input_name),
+        #                                          get_relative=True)
 
-        print(f"S{self.sid}: {self.LayerName} "
-              f"BackwardInput : {err_grad_input}, BackwardWeight : {err_grad_weight}")
+        # print(f"S{self.sid}: {self.LayerName} "
+        #       f"BackwardInput : {err_grad_input}, BackwardWeight : {err_grad_weight}")
 
-        return err, err_grad_input, err_grad_weight
+        return err
 
     def transpose_weight_grad_for_matmul(self, w):
         return w

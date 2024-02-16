@@ -143,102 +143,6 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
     validation_net = NetQ()
     validation_net.to(torch.device("cuda:0"))
 
-    def validation_accuracy():
-        correct = 0
-        total = 0
-        conv1.inject_to_plain(validation_net.conv1)
-        norm1.inject_to_plain(validation_net.norm1)
-        conv2.inject_to_plain(validation_net.conv2)
-        norm2.inject_to_plain(validation_net.norm2)
-        conv3.inject_to_plain(validation_net.conv3)
-        norm3.inject_to_plain(validation_net.norm3)
-        conv4.inject_to_plain(validation_net.conv4)
-        norm4.inject_to_plain(validation_net.norm4)
-        conv5.inject_to_plain(validation_net.conv5)
-        norm5.inject_to_plain(validation_net.norm5)
-        conv6.inject_to_plain(validation_net.conv6)
-        norm6.inject_to_plain(validation_net.norm6)
-        conv7.inject_to_plain(validation_net.conv7)
-        norm7.inject_to_plain(validation_net.norm7)
-        conv8.inject_to_plain(validation_net.conv8)
-        norm8.inject_to_plain(validation_net.norm8)
-        fc1.inject_to_plain(validation_net.fc1)
-        fc2.inject_to_plain(validation_net.fc2)
-        fc3.inject_to_plain(validation_net.fc3)
-        validation_net.to(device_cuda)
-
-        for data in testloader:
-            images, labels = data[0].to(device_cuda), data[1].to(device_cuda)
-            outputs = validation_net(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-        print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
-
-        torch.cuda.empty_cache()
-
-    def sync_layer_params():
-        conv1.inject_params(net.conv1)
-        norm1.inject_params(net.norm1)
-        conv2.inject_params(net.conv2)
-        norm2.inject_params(net.norm2)
-        conv3.inject_params(net.conv3)
-        norm3.inject_params(net.norm3)
-        conv4.inject_params(net.conv4)
-        norm4.inject_params(net.norm4)
-        conv5.inject_params(net.conv5)
-        norm5.inject_params(net.norm5)
-        conv6.inject_params(net.conv6)
-        norm6.inject_params(net.norm6)
-        conv7.inject_params(net.conv7)
-        norm7.inject_params(net.norm7)
-        conv8.inject_params(net.conv8)
-        norm8.inject_params(net.norm8)
-        fc1.inject_params(net.fc1)
-        fc2.inject_params(net.fc2)
-        fc3.inject_params(net.fc3)
-
-        register_layer(net.relu2, "relu2")
-        register_layer(net.pool2, "pool2")
-        register_layer(net.relu8, "relu8")
-        register_layer(net.pool8, "pool8")
-
-        register_weight_layer(net.conv1, "conv1")
-        register_weight_layer(net.norm1, "norm1")
-        register_weight_layer(net.conv2, "conv2")
-        register_weight_layer(net.norm2, "norm2")
-        register_weight_layer(net.conv3, "conv3")
-        register_weight_layer(net.conv4, "conv4")
-        register_weight_layer(net.conv5, "conv5")
-        register_weight_layer(net.conv6, "conv6")
-        register_weight_layer(net.conv7, "conv7")
-        register_weight_layer(net.conv8, "conv8")
-        register_weight_layer(net.norm8, "norm8")
-        register_weight_layer(net.fc1, "fc1")
-        register_weight_layer(net.fc2, "fc2")
-        register_weight_layer(net.fc3, "fc3")
-
-    if sid != 2 and is_compare:
-        sync_layer_params()
-
-    def compare_layer_weight(layer: SecretLinearLayerBase, layer_name: str) -> None:
-        print(f"S{sid}: Compare with netQ layer:", layer_name)
-        layer.make_sure_cpu_is_latest("weight")
-        compare_expected_actual(get_layer_weight(layer_name), layer.get_cpu("weight"), get_relative=True, verbose=True)
-
-    if sid == 0 and is_compare:
-        compare_layer_weight(conv1, "conv1")
-        compare_layer_weight(conv2, "conv2")
-        compare_layer_weight(conv3, "conv3")
-        compare_layer_weight(conv4, "conv4")
-        compare_layer_weight(conv5, "conv5")
-        compare_layer_weight(conv6, "conv6")
-        compare_layer_weight(conv7, "conv7")
-        compare_layer_weight(conv8, "conv8")
-        compare_layer_weight(fc1, "fc1")
-        compare_layer_weight(fc2, "fc2")
-        compare_layer_weight(fc3, "fc3")
-
     NamedTimer.set_verbose_level(VerboseLevel.RUN)
 
     train_counter = 0
@@ -253,8 +157,6 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
             if run_batch_size != batch_size:
                 break
 
-            if train_counter % 30 == 0 and sid == 0:
-                validation_accuracy()
 
             train_counter += 1
             with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
@@ -273,43 +175,6 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
 
                 dist.barrier()
                 secret_nn.forward()
-                secret_nn.backward()
-
-                if sid == 0 and is_compare:
-                    compute_expected_nn()
-                    compare_weight_layer(conv1, "conv1")
-                    compare_weight_layer(norm1, "norm1")
-                    compare_weight_layer(conv2, "conv2")
-                    compare_weight_layer(norm2, "norm2")
-                    compare_layer(relu2, "relu2")
-                    compare_layer(pool2, "pool2")
-                    compare_weight_layer(conv3, "conv3")
-                    compare_weight_layer(conv4, "conv4")
-                    compare_weight_layer(conv5, "conv5")
-                    compare_weight_layer(conv6, "conv6")
-                    compare_weight_layer(conv7, "conv7")
-                    compare_weight_layer(conv8, "conv8")
-                    compare_weight_layer(norm8, "norm8")
-                    compare_layer(relu8, "relu8")
-                    compare_layer(pool8, "pool8")
-                    compare_weight_layer(fc1, "fc1")
-                    compare_weight_layer(fc2, "fc2")
-                    compare_weight_layer(fc3, "fc3")
-
-                if sid != 2:
-                    if is_compare:
-                        # secret_nn.plain_forward()
-                        # secret_nn.plain_backward()
-                        # secret_nn.show_plain_error()
-                        # secret_optim.update_params(test_with_ideal=True)
-                        secret_optim.update_params(test_with_ideal=False)
-                        pass
-                    else:
-                        secret_optim.update_params(test_with_ideal=False)
-                        pass
-
-                    running_loss += secret_nn.get_loss()
-                    print(f"TrainCounter: {train_counter}, current_loss: {secret_nn.get_loss()}")
 
                 with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
                     torch.cuda.empty_cache()
@@ -335,28 +200,26 @@ def local_vgg16(sid, master_addr, master_port, is_compare=False):
 
     input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
 
-    def generate_conv_module(index, n_channel_conv, is_big=True):
+    def generate_conv_module(index, n_channel_conv, num_small=0):
         res = []
-        if is_big:
-            for _ in range(2):  # VGG-16 has 2 or 3 conv layers before a pool in the bigger blocks
-                conv_local = SecretConv2dLayer(sid, f"Conv{index}", n_channel_conv, 3)
-                norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
-                relu_local = SecretReLULayer(sid, f"Relu{index}")
-                res += [conv_local, norm_local, relu_local]
-                index += 1
+        for i in range(num_small):  # VGG-16 has 2 or 3 conv layers before a pool in the bigger blocks
+            conv_local = SecretConv2dLayer(sid, f"Conv{index}_{i}", n_channel_conv, 3)
+            relu_local = SecretReLULayer(sid, f"Relu{index}_{i}")
+            res += [conv_local, relu_local]
+                
         conv_local = SecretConv2dLayer(sid, f"Conv{index}", n_channel_conv, 3)
-        norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
         relu_local = SecretReLULayer(sid, f"Relu{index}")
         pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 2)
-        res += [conv_local, norm_local, relu_local, pool_local]
+        res += [conv_local, relu_local, pool_local]
+        index += 1
         return res, index
 
     index = 1
-    conv_module_1, index = generate_conv_module(index, 64, is_big=False)
-    conv_module_2, index = generate_conv_module(index, 128, is_big=False)
-    conv_module_3, index = generate_conv_module(index, 256, is_big=True)
-    conv_module_4, index = generate_conv_module(index, 512, is_big=True)
-    conv_module_5, index = generate_conv_module(index, 512, is_big=True)
+    conv_module_1, index = generate_conv_module(index, 64, 1)
+    conv_module_2, index = generate_conv_module(index, 128, 1)
+    conv_module_3, index = generate_conv_module(index, 256, 2)
+    conv_module_4, index = generate_conv_module(index, 512, 2)
+    conv_module_5, index = generate_conv_module(index, 512, 2)
 
     all_conv_modules = conv_module_1 + conv_module_2 + conv_module_3 + conv_module_4 + conv_module_5
 
@@ -403,6 +266,8 @@ def local_vgg16(sid, master_addr, master_port, is_compare=False):
                 dist.barrier()
                 secret_nn.forward()
                 break
+        with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
+                    torch.cuda.empty_cache()
 
         NamedTimer.end("TrainValidationEpoch")
 
@@ -424,48 +289,54 @@ def local_alexnet(sid, master_addr, master_port, is_compare=False):
     input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
     all_conv_modules = []
     
-    index = 1
-    conv_local = SecretConv2dLayer(sid, f"Conv{index}", 96, 11, stride=4, padding = 10)
-    norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
-    relu_local = SecretReLULayer(sid, f"Relu{index}")
-    pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
-    all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
     
-    index = 2
-    conv_local = SecretConv2dLayer(sid, f"Conv{index}", 256, 5)
-    norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
-    relu_local = SecretReLULayer(sid, f"Relu{index}")
-    pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
-    all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
+    
+    # index = 1
+    # conv_local = SecretConv2dLayer(sid, f"Conv{index}", 96, 11, stride=4, padding = 10)
+    # norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+    # relu_local = SecretReLULayer(sid, f"Relu{index}")
+    # pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    # all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
+    
+    # index = 2
+    # conv_local = SecretConv2dLayer(sid, f"Conv{index}", 256, 5)
+    # norm_local = SecretBatchNorm2dLayer(sid, f"Norm{index}")
+    # relu_local = SecretReLULayer(sid, f"Relu{index}")
+    # pool_local = SecretMaxpool2dLayer(sid, f"Pool{index}", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    # all_conv_modules += [conv_local, norm_local, relu_local, pool_local]
+    
+    
+    
     # Adjusting the convolutional layers for AlexNet
-    # conv1 = SecretConv2dLayer(sid, "Conv1", 96, 11, stride=4, padding = 10)
-    # norm1 = SecretBatchNorm2dLayer(sid, "Norm1")
-    # relu1 = SecretReLULayer(sid, "Relu1")
-    # pool1 = SecretMaxpool2dLayer(sid, "Pool1", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    # TODO: Solve this.
+    conv1 = SecretConv2dLayer(sid, "Conv1", 127, 11, stride=4, padding = 10)
+    norm1 = SecretBatchNorm2dLayer(sid, "Norm1")
+    relu1 = SecretReLULayer(sid, "Relu1")
+    pool1 = SecretMaxpool2dLayer(sid, "Pool1", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
 
-    # conv2 = SecretConv2dLayer(sid, "Conv2", 256, 5)
-    # norm2 = SecretBatchNorm2dLayer(sid, "Norm2")
-    # relu2 = SecretReLULayer(sid, "Relu2")
-    # pool2 = SecretMaxpool2dLayer(sid, "Pool2", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
+    conv2 = SecretConv2dLayer(sid, "Conv2", 256, 5)
+    norm2 = SecretBatchNorm2dLayer(sid, "Norm2")
+    relu2 = SecretReLULayer(sid, "Relu2")
+    pool2 = SecretMaxpool2dLayer(sid, "Pool2", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
 
-    # conv3 = SecretConv2dLayer(sid, "Conv3", 384, 3)
-    # relu3 = SecretReLULayer(sid, "Relu3")
+    conv3 = SecretConv2dLayer(sid, "Conv3", 384, 3)
+    relu3 = SecretReLULayer(sid, "Relu3")
 
-    # conv4 = SecretConv2dLayer(sid, "Conv4", 384, 3)
-    # relu4 = SecretReLULayer(sid, "Relu4")
+    conv4 = SecretConv2dLayer(sid, "Conv4", 384, 3)
+    relu4 = SecretReLULayer(sid, "Relu4")
 
-    # conv5 = SecretConv2dLayer(sid, "Conv5", 256, 3)
-    # relu5 = SecretReLULayer(sid, "Relu5")
+    conv5 = SecretConv2dLayer(sid, "Conv5", 256, 3)
+    relu5 = SecretReLULayer(sid, "Relu5")
 
     flatten = SecretFlattenLayer(sid, "FlattenLayer")
 
-    # # Adjusting the fully connected layers for AlexNet
-    # fc1 = SecretMatmulLayer(sid, "FC1", batch_size, 256)
-    # fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    # Adjusting the fully connected layers for AlexNet
+    fc1 = SecretMatmulLayer(sid, "FC1", batch_size, 256)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
 
 
-    # fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 256)
-    # fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 256)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
 
     fc3 = SecretMatmulLayer(sid, "FC3", batch_size, n_classes)
     fc_relu3 = SecretReLULayer(sid, "FcRelu3")
@@ -473,10 +344,10 @@ def local_alexnet(sid, master_addr, master_port, is_compare=False):
     output_layer = SecretOutputLayer(sid, "OutputLayer")
 
     # Assembling the layers for AlexNet
-    # layers = [input_layer, conv1, norm1, relu1, pool1, conv2, norm2, relu2, pool2, conv3, relu3, conv4, 
-    #           relu4, conv5, relu5, flatten, fc1, fc_relu1, fc2, fc_relu2, fc3, fc_relu3, output_layer]
-    # layers = [input_layer,  norm1, flatten, fc3, fc_relu3, output_layer]
-    layers = [input_layer] + all_conv_modules + [flatten, fc3,fc_relu3, output_layer]
+    layers = [input_layer, conv1, norm1, relu1, pool1, conv2, norm2, relu2, pool2, conv3, relu3, conv4, 
+              relu4, conv5, relu5, flatten, fc1, fc_relu1, fc2, fc_relu2, fc3, fc_relu3, output_layer]
+    # layers = [input_layer, conv1, norm1, flatten, fc3, fc_relu3, output_layer]
+    # layers = [input_layer] + all_conv_modules + [flatten, fc3,fc_relu3, output_layer]
 
     secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
     secret_nn.set_eid(GlobalTensor.get_eid())
@@ -524,4 +395,4 @@ if __name__ == "__main__":
 
     seed_torch(123)
 
-    marshal_process(input_sid, MasterAddr, MasterPort, local_alexnet, [])
+    marshal_process(input_sid, MasterAddr, MasterPort, local_vgg16, [])

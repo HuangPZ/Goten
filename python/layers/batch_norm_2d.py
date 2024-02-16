@@ -57,15 +57,24 @@ class SecretBatchNorm2dLayer(SecretActivationLayer):
             self.transfer_cpu_to_enclave("weight")
             self.transfer_cpu_to_enclave("bias")
             # print(f"BatchNorm2d: {self.LayerName} batchnorm_init")
+            def round_2(v):
+                if v == 0:
+                    return 1
+                v -= 1
+                shift = 1
+                while v >> shift:
+                    v |= v >> shift
+                    shift <<= 1
+                return v + 1
             self.batchnorm_init(
                 self.LayerName,
                 "input", "output", "weight", "bias",
                 "DerInput", "DerOutput", "DerWeight", "DerBias",
                 "RunMean", "RunVar", "CurMean", "CurVar",
                 "mu",
-                self.BatchSize, self.NumChannel, self.ImgH, self.ImgW,
+                self.BatchSize, round_2(self.NumChannel), round_2(self.ImgH), round_2(self.ImgW),
                 int(self.IsAffine), int(self.IsCumulative), self.momentum, self.epsilon)
-            # print(f"BatchNorm2d: {self.LayerName} batchnorm_init_DONE")
+            print(f"BatchNorm2d: {self.LayerName} batchnorm_init_DONE")
         else:
             # print(f"BatchNorm2d: {self.LayerName} init_NOT_ENCLAVE")
             self.ForwardFunc = self.ForwardFunc(self.InputShape[1])
@@ -132,6 +141,7 @@ class SecretBatchNorm2dLayer(SecretActivationLayer):
         if self.sid == 2:
             return
         with NamedTimerInstance(f"S{self.sid}: {self.LayerName} Forward", verbose_level=VerboseLevel.LAYER):
+            print(f"BatchNorm2d: {self.LayerName} forward")
             if self.is_enclave_mode:
                 self.forward_tensor_transfer()
                 self.batchnorm_forward(self.LayerName, int(True))
