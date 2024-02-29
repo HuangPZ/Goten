@@ -31,7 +31,7 @@ class SecretConv2dLayer(SecretLinearLayerBase):
             self.x_shape = [self.batch_size, self.n_input_channel, self.img_hw, self.img_hw]
         self.w_shape = [self.n_output_channel, self.n_input_channel, self.filter_hw, self.filter_hw]
         self.y_shape = calc_conv2d_output_shape(self.x_shape, self.w_shape, self.padding, self.stride)
-        print(f"Conv2d: {self.LayerName} x_shape: {self.x_shape}, w_shape: {self.w_shape}, y_shape: {self.y_shape}")
+        # print(f"Conv2d: {self.LayerName} x_shape: {self.x_shape}, w_shape: {self.w_shape}, y_shape: {self.y_shape}")
         super().init_shape()
 
 

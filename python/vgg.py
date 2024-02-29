@@ -63,7 +63,7 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
     init_communicate(sid, master_addr, master_port)
     warming_up_cuda()
 
-    batch_size = 2
+    batch_size = 128
     n_img_channel = 3
     img_hw = 32
     n_classes = 10
@@ -73,7 +73,7 @@ def local_vgg9(sid, master_addr, master_port, is_compare=False):
 
     x_shape = [batch_size, n_img_channel, img_hw, img_hw]
 
-    trainloader, testloader = load_cifar10(batch_size, test_batch_size=32)
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
 
     GlobalTensor.init()
 
@@ -194,7 +194,7 @@ def local_vgg16(sid, master_addr, master_port, is_compare=False):
 
     x_shape = [batch_size, n_img_channel, img_hw, img_hw]
 
-    trainloader, testloader = load_cifar10(batch_size, test_batch_size=32)
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
 
     GlobalTensor.init()
 
@@ -309,7 +309,7 @@ def local_alexnet(sid, master_addr, master_port, is_compare=False):
     
     # Adjusting the convolutional layers for AlexNet
     # TODO: Solve this.
-    conv1 = SecretConv2dLayer(sid, "Conv1", 127, 11, stride=4, padding = 10)
+    conv1 = SecretConv2dLayer(sid, "Conv1", 128, 11, stride=4, padding = 10)
     norm1 = SecretBatchNorm2dLayer(sid, "Norm1")
     relu1 = SecretReLULayer(sid, "Relu1")
     pool1 = SecretMaxpool2dLayer(sid, "Pool1", 3, maxpoolpadding = 1, row_stride = 2, col_stride = 2)
@@ -383,7 +383,306 @@ def local_alexnet(sid, master_addr, master_port, is_compare=False):
 
         # NamedTimer.end("TrainValidationEpoch")
 
+def local_secureml(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
 
+    batch_size = 128
+    diminput = 784
+    x_shape = [batch_size, diminput]
+    n_img_channel = 3
+    img_hw = 32
+    n_classes = 10
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+
+
+    # Fully connected layers adjusted for CIFAR-10 classification
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+    fc1 = SecretMatmulLayer(sid, "FC1", batch_size, 128)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 128)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, 10)  # Output layer for CIFAR-10
+    fc_relu3 = SecretReLULayer(sid, "FcRelu3")
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+
+    # layers = [input_layer] + all_conv_module + [flatten, fc1, fc_norm1, fc_relu1, fc2, output_layer]
+    layers = [input_layer, flatten, fc1, fc_relu1, fc2, fc_relu2, fc3, fc_relu3, output_layer]
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                # input("Press Enter to continue...")
+                secret_nn.forward()
+                break
+        print("dist.GLOBAL_SEND, dist.GLOBAL_RECV")
+        print(dist.GLOBAL_SEND, dist.GLOBAL_RECV)
+        with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
+                    torch.cuda.empty_cache()
+
+        NamedTimer.end("TrainValidationEpoch")
+
+def local_sarda(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
+
+    batch_size = 128
+    diminput = 784
+    x_shape = [batch_size, diminput]
+    n_img_channel = 1
+    img_hw = 32
+    n_classes = 10
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+
+
+    # Fully connected layers adjusted for CIFAR-10 classification
+    
+    conv_local = SecretConv2dLayer(sid, f"Conv1", 5, 2,padding=2)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+    fc2 = SecretMatmulLayer(sid, "FC2", batch_size, 100)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, 10)  # Output layer for CIFAR-10
+    fc_relu3 = SecretReLULayer(sid, "FcRelu3")
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+
+    # layers = [input_layer] + all_conv_module + [flatten, fc1, fc_norm1, fc_relu1, fc2, output_layer]
+    layers = [input_layer, conv_local, fc_relu1,flatten, fc2, fc_relu2, fc3, fc_relu3, output_layer]
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                secret_nn.forward()
+                break
+        with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
+                    torch.cuda.empty_cache()
+
+        NamedTimer.end("TrainValidationEpoch")
+        
+def local_minionn(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
+
+    batch_size = 128
+    diminput = 784
+    x_shape = [batch_size, diminput]
+    n_img_channel = 1
+    img_hw = 32
+    n_classes = 10
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+
+
+    # Fully connected layers adjusted for CIFAR-10 classification
+    
+    conv_local1 = SecretConv2dLayer(sid, f"Conv1", 16, 5,padding=4)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    pool1 = SecretMaxpool2dLayer(sid, "Pool1", 2, maxpoolpadding = 0, row_stride = 2, col_stride = 2)
+    conv_local2 = SecretConv2dLayer(sid, f"Conv2", 16, 5,padding=4)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    pool2 = SecretMaxpool2dLayer(sid, "Pool2", 2, maxpoolpadding = 0, row_stride = 2, col_stride = 2)
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, 100)
+    fc_relu3 = SecretReLULayer(sid, "FcRelu3")
+    fc4 = SecretMatmulLayer(sid, "FC4", batch_size, 10)  # Output layer for CIFAR-10
+    fc_relu4 = SecretReLULayer(sid, "FcRelu4")
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+
+    # layers = [input_layer] + all_conv_module + [flatten, fc1, fc_norm1, fc_relu1, fc2, output_layer]
+    layers = [input_layer, conv_local1, fc_relu1,pool1, conv_local2, fc_relu2,pool2, flatten, fc3, fc_relu3, fc4, fc_relu4, output_layer]
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                secret_nn.forward()
+                break
+        with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
+                    torch.cuda.empty_cache()
+
+        NamedTimer.end("TrainValidationEpoch")
+        
+def local_lenet(sid, master_addr, master_port, is_compare=False):
+    init_communicate(sid, master_addr, master_port)
+    warming_up_cuda()
+
+    batch_size = 128
+    diminput = 784
+    x_shape = [batch_size, diminput]
+    n_img_channel = 1
+    img_hw = 32
+    n_classes = 10
+
+    x_shape = [batch_size, n_img_channel, img_hw, img_hw]
+
+    
+
+    trainloader, testloader = load_cifar10(batch_size, test_batch_size=128)
+
+    GlobalTensor.init()
+
+    input_layer = SecretInputLayer(sid, "InputLayer", x_shape)
+
+
+    # Fully connected layers adjusted for CIFAR-10 classification
+    
+    conv_local1 = SecretConv2dLayer(sid, f"Conv1", 20, 5,padding=4)
+    fc_relu1 = SecretReLULayer(sid, "FcRelu1")
+    pool1 = SecretMaxpool2dLayer(sid, "Pool1", 2, maxpoolpadding = 0, row_stride = 2, col_stride = 2)
+    conv_local2 = SecretConv2dLayer(sid, f"Conv2", 50, 5,padding=4)
+    fc_relu2 = SecretReLULayer(sid, "FcRelu2")
+    pool2 = SecretMaxpool2dLayer(sid, "Pool2", 2, maxpoolpadding = 0, row_stride = 2, col_stride = 2)
+    flatten = SecretFlattenLayer(sid, "FlattenLayer")
+    fc3 = SecretMatmulLayer(sid, "FC3", batch_size, 500)
+    fc_relu3 = SecretReLULayer(sid, "FcRelu3")
+    fc4 = SecretMatmulLayer(sid, "FC4", batch_size, 10)  # Output layer for CIFAR-10
+    fc_relu4 = SecretReLULayer(sid, "FcRelu4")
+    output_layer = SecretOutputLayer(sid, "OutputLayer")
+
+
+    # layers = [input_layer] + all_conv_module + [flatten, fc1, fc_norm1, fc_relu1, fc2, output_layer]
+    layers = [input_layer, conv_local1, fc_relu1,pool1, conv_local2, fc_relu2,pool2, flatten, fc3, fc_relu3, fc4, fc_relu4, output_layer]
+    secret_nn = SecretNeuralNetwork(sid, "SecretNeuralNetwork")
+    secret_nn.set_eid(GlobalTensor.get_eid())
+    secret_nn.set_layers(layers)
+
+    input_layer.StoreInEnclave = False
+
+    NamedTimer.set_verbose_level(VerboseLevel.RUN)
+
+    train_counter = 0
+    running_loss = 0
+
+    NumEpoch = 1
+    # https://github.com/chengyangfu/pytorch-vgg-cifar10
+    for epoch in range(NumEpoch):  # loop over the dataset multiple times
+        # NamedTimer.start("TrainValidationEpoch", verbose_level=VerboseLevel.RUN)
+        for input_f, target_f in trainloader:
+            run_batch_size = input_f.size()[0]
+            if run_batch_size != batch_size:
+                break
+
+            train_counter += 1
+            with NamedTimerInstance("TrainWithBatch", VerboseLevel.RUN):
+
+                if sid != 2:
+                    input_layer.set_input(input_f)
+                    output_layer.load_target(target_f)
+
+                dist.barrier()
+                secret_nn.forward()
+                break
+        with NamedTimerInstance(f"Sid: {sid} Free cuda cache"):
+                    torch.cuda.empty_cache()
+
+        # NamedTimer.end("TrainValidationEpoch")
+
+
+from scapy.all import sniff
+
+def packet_analysis(packet):
+    # You can add filtering logic here to process only certain packets
+    print(packet.summary())
 
 
 if __name__ == "__main__":
@@ -394,5 +693,13 @@ if __name__ == "__main__":
     print("input_sid, MasterAddr, MasterPort", input_sid, MasterAddr, MasterPort)
 
     seed_torch(123)
-
+    
     marshal_process(input_sid, MasterAddr, MasterPort, local_vgg16, [])
+    
+    # marshal_process(input_sid, MasterAddr, MasterPort, local_sarda, [])
+    # marshal_process(input_sid, MasterAddr, MasterPort, local_minionn, [])
+    # marshal_process(input_sid, MasterAddr, MasterPort, local_lenet, [])
+    # marshal_process(input_sid, MasterAddr, MasterPort, local_alexnet, [])
+    # marshal_process(input_sid, MasterAddr, MasterPort, local_vgg16, [])
+    # input("Press Enter to continue...")
+

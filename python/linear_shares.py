@@ -32,7 +32,7 @@ def conv2d_op(w, x, stride = 1, padding=0, is_div=True):
 
     batch_size, in_chan, img_hw, _ = x.size()
     out_chan, _, fil_hw, __ = w.size()
-    print("conv2d_op: ", batch_size, in_chan, img_hw, out_chan, fil_hw, w.size(), x.size())
+    # print("conv2d_op: ", batch_size, in_chan, img_hw, out_chan, fil_hw, w.size(), x.size())
     y_shape = [batch_size, out_chan, img_hw, img_hw]
     dtype = x.dtype
     device = x.device
@@ -599,14 +599,14 @@ class SecretNeuralNetwork(TensorLoader):
             NextLayer.register_prev_layer(PrevLayer)
 
         for layer in self.layers:
-            print(f"Before initialize layer {layer.LayerName}")
+            # print(f"Before initialize layer {layer.LayerName}")
             layer.set_eid(self.get_eid())
             layer.init_shape()
             layer.link_tensors()
             
-        print("Set layers")
+        # print("Set layers")
         for layer in self.layers:
-            print(f"Set layer {layer.LayerName}")
+            # print(f"Set layer {layer.LayerName}")
             layer.init(start_enclave=False)  #? why was this false
 
     def execute_for_each_layer(self, func, reverse=False):
@@ -615,7 +615,8 @@ class SecretNeuralNetwork(TensorLoader):
             # print(f"SID: {self.sid} {layer.LayerName}, {func}")
             if self.sid == 2 and layer.IsDummyForS2:
                 continue
-            func(layer)
+            with NamedTimerInstance("TrainWithBatch", 3):
+                func(layer)
 
     def classifier_output(self):
         with NamedTimerInstance(f"S{self.sid}: {self.nn_name} classifier_output"):
@@ -838,4 +839,6 @@ def warming_up_cuda():
 def init_communicate(rank, master_address, master_port, backend='gloo'):
     os.environ['MASTER_ADDR'] = master_address
     os.environ['MASTER_PORT'] = master_port
+    # print("Rank: ", rank)
+    # print("init process group")
     dist.init_process_group(backend, rank=rank, world_size=SecretConfig.worldSize)
